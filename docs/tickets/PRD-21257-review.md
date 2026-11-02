@@ -1,0 +1,72 @@
+# PRD-21257 · Code review
+
+## Round 1 · 2026-11-02 · reviewed dev/PRD-21257 @ 2bc3a1f (base 6791c0c)
+
+Verdict: changes requested
+
+### Findings
+
+1. [must-fix] `src/azure_mcp/tools/_common.py:41-59` (`run()`) — the tech design's own
+   "Non-functional" section (`docs/tickets/PRD-21257.md` "Security" bullet) commits to:
+   "log `tenant_id` (not secret) + `subscription_id` + tool name + outcome for
+   traceability." The implementation does not do this: the only `log.*` call in the whole
+   repo is `log.exception("unexpected error in tool handler")` on the unhandled-exception
+   path (`_common.py:57`). Every successful call and every structured error outcome
+   (`unauthorized`, `not_found`, `invalid_argument`, `rate_limited`, `upstream_error`) is
+   never logged — there is no way to trace which tenant made a given failing call once this
+   is deployed. This is a committed tech-design behavior that was silently dropped: the
+   Self-test section does not mention it as a known gap or deviation anywhere. Fix: add one
+   structured log line in `run()` recording at least tool name, `tenant_id` (never the
+   client secret), and outcome (`ok` / the error `code`), for both the success and
+   `AzureApiError`/`ToolInputError` branches, not just the catch-all `except Exception`.
+
+### Suggestions
+
+1. `src/azure_mcp/client.py:35-42` (`_retry_after`) — the backoff caps `Retry-After` at
+   `MAX_BACKOFF = 20.0`s. The design doc says retries should respect `Retry-After` "up to
+   the single-call time budget (<120s)" (AC10) — if Azure ever sends a `Retry-After` above
+   20s, this waits less than Azure asked for and may hit `429` again sooner than necessary.
+   Not a correctness bug (the call still eventually resolves to a structured `rate_limited`
+   error within budget, and no AC/test asserts the exact wait value), but worth documenting
+   the 20s cap as a deliberate choice next time this file changes, since AC10's wording
+   reads as "respect it fully."
+2. `src/azure_mcp/tools/advisor.py:54-64` and `resource_health.py:48-57` fetch the full
+   ARM result set (no `$top`) and only slice to `limit` client-side via `page()`, unlike
+   `resources.py:68` which passes `$top` to ARM itself. Both are correct per the AC/tests,
+   but for a subscription with many Advisor recommendations or health events this pulls
+   more data from Azure than the page size needs — a token-economy nit (SOP token-economy
+   guidance), not a defect.
+
+### Verified this round (not findings — recorded so the next round doesn't re-check)
+
+- `uv run pytest -q` → 30 passed (matches the Self-test claim).
+- `uvx ruff check .` → all checks passed (matches the Self-test claim; `ruff` itself is not
+  on PATH in the review sandbox so it was run via `uvx`, same tool/version resolution).
+- `sudo docker build --platform linux/amd64 -t azure-mcp:review .` → builds successfully.
+  This resolves the Self-test section's flagged gap ("Docker build ... could not be run");
+  only cosmetic `UndefinedVar` build warnings for the unset `$VERSION`/`$BUILD_DATE`/
+  `$COMMIT_SHA` build args (expected — those are meant to be passed by the publish
+  pipeline, not baked into the repo).
+- Ran the built image: `GET /health` → `200 {"status":"ok"}`; `POST /mcp` with no
+  credential headers → `401` (AC8), confirmed against the real container, not just the
+  design doc's local-process verification.
+- `README.md` lines 11-81 (the MSPbots Connector block) are byte-identical to
+  `~/.claude/skills/vendor-mcp-development/reference/readme-connector-section.md`
+  (`diff` clean), positioned before the Header credentials table, per SOP §0.5.
+- `grep -rnP '[\x{4e00}-\x{9fff}]' --exclude-dir=.git --exclude-dir=.venv .` → no output
+  (no Chinese anywhere in the repo).
+- No plaintext secrets found (`.env.example` is placeholder-only; manual grep for
+  high-entropy credential-shaped literals found nothing); `gitleaks` itself is not
+  installed in this environment, so the SOP's "gitleaks detect (if available)" step was
+  skipped, not run-and-passed.
+- `origin/main` is still at `6791c0c` (unchanged since the dev leg synced) — no re-sync
+  needed before merge.
+- Spot-checked tool code against the Data & API contract table (`subscriptions.py`,
+  `resources.py`, `advisor.py`, `resource_health.py`, `monitor.py`) and the structured
+  error mapping (`errors.py::status_to_code`): API paths, api-versions, and error-code
+  mapping all match the design doc. `tests/test_isolation.py` genuinely exercises
+  concurrent `ContextVar` isolation through the real middleware → client path (not a
+  trivial/fake test).
+- Credentials: read only from the three required headers in `auth.py`, bound to a
+  `contextvars.ContextVar`, reset in `finally`; never cached, never logged, no
+  environment-variable fallback — matches SOP §3's isolation requirement.
