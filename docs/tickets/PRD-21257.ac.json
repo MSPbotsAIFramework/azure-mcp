@@ -1,0 +1,118 @@
+[
+  {
+    "id": "TC1",
+    "ac": "AC1",
+    "text": "Given valid X-Azure-Tenant-Id/X-Azure-Client-Id/X-Azure-Client-Secret headers for an app registration with Reader access on at least one subscription, When azure_list_subscriptions is called, Then the response lists each visible subscription's id, display name, and state.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_list_subscriptions_returns_id_name_state (planned, new test, mocked ARM /subscriptions response)"]
+  },
+  {
+    "id": "TC2",
+    "ac": "AC2",
+    "text": "Given a known subscription_id, When azure_get_subscription is called, Then the response returns that subscription's id, display name, state, and tenant id.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_get_subscription_returns_details (planned, new test, mocked ARM /subscriptions/{id} response)"]
+  },
+  {
+    "id": "TC3",
+    "ac": "AC2",
+    "text": "Given an unknown or inaccessible subscription_id, When azure_get_subscription is called, Then the response is a structured not_found error naming the subscription id, not a 500 or unhandled exception.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_get_subscription_unknown_is_not_found (planned, new test, mocked ARM 404 response)"]
+  },
+  {
+    "id": "TC4",
+    "ac": "AC3",
+    "text": "Given a valid subscription_id and no filters, When azure_list_resources is called, Then resources in that subscription are returned with a default page size of 50 and has_more set when the result is truncated.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_list_resources_default_pagination (planned, new test, mocked ARM /resources response with nextLink)"]
+  },
+  {
+    "id": "TC5",
+    "ac": "AC3",
+    "text": "Given resource_group and/or resource_type filters, When azure_list_resources is called, Then only matching resources are returned.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_list_resources_applies_filters (planned, new test, asserts the $filter built from resource_group/resource_type)"]
+  },
+  {
+    "id": "TC6",
+    "ac": "AC4",
+    "text": "Given a valid subscription_id, When azure_list_advisor_recommendations is called with an optional category filter (Cost/Security/HighAvailability/Performance/OperationalExcellence), Then only recommendations in that category are returned; with no filter, all categories are returned.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_advisor_recommendations_category_filter (planned, new test, mocked Microsoft.Advisor/recommendations response)"]
+  },
+  {
+    "id": "TC7",
+    "ac": "AC5",
+    "text": "Given a valid subscription_id, When azure_list_resource_health_events is called, Then current/recent Service Health events (service issues, planned maintenance, health/security advisories) for that subscription are returned.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_resource_health_events_list (planned, new test, mocked Microsoft.ResourceHealth/events response)"]
+  },
+  {
+    "id": "TC8",
+    "ac": "AC6",
+    "text": "Given a valid ARM resource_id, When azure_list_resource_metric_definitions is called, Then the available metric names and units for that resource are returned.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_metric_definitions_list (planned, new test, mocked Microsoft.Insights/metricDefinitions response)"]
+  },
+  {
+    "id": "TC9",
+    "ac": "AC7",
+    "text": "Given a valid ARM resource_id, a metric name taken from TC8's output, and a timespan, When azure_get_resource_metrics is called, Then the time-series values for that metric over that timespan are returned.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_get_resource_metrics_returns_series (planned, new test, mocked Microsoft.Insights/metrics response)"]
+  },
+  {
+    "id": "TC10",
+    "ac": "AC7",
+    "text": "Given an invalid or unknown metric name, When azure_get_resource_metrics is called, Then the response is a structured invalid_argument error naming the bad metric, not a 500.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_get_resource_metrics_invalid_metric_name (planned, new test, mocked ARM 400 BadRequest response)"]
+  },
+  {
+    "id": "TC11",
+    "ac": "AC8",
+    "text": "Given a tool call missing one or more of X-Azure-Tenant-Id/X-Azure-Client-Id/X-Azure-Client-Secret, When any tool is called, Then the server returns HTTP 401 listing the missing header name(s), without making any call to Azure.",
+    "type": "auto",
+    "tests": ["tests/test_middleware.py::test_missing_header_returns_401_without_calling_azure (planned, new test)"]
+  },
+  {
+    "id": "TC12",
+    "ac": "AC9",
+    "text": "Given credentials Azure AD rejects (bad client secret, unknown tenant) or that lack the RBAC Reader role on the target subscription, When any tool is called, Then the tool returns a structured unauthorized error rather than a 500 or an unhandled exception.",
+    "type": "auto",
+    "tests": [
+      "tests/test_tools.py::test_bad_credentials_token_exchange_is_unauthorized (planned, new test, mocked AADSTS error from the token endpoint)",
+      "tests/test_tools.py::test_arm_403_missing_rbac_is_unauthorized (planned, new test, mocked ARM 403 response)"
+    ]
+  },
+  {
+    "id": "TC13",
+    "ac": "AC10",
+    "text": "Given Azure returns 429 on an upstream call, When the tool retries, Then it backs off respecting Retry-After up to the single-call time budget (<120s), and if still failing returns a structured rate_limited error.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_429_retries_then_rate_limited (planned, new test, mocked 429-then-429 and 429-then-200 sequences)"]
+  },
+  {
+    "id": "TC14",
+    "ac": "AC11",
+    "text": "Given two concurrent tool calls carrying different Tenant Id/Client Id/Client Secret headers, When both execute at the same time, Then each call's Azure AD token exchange and response data are scoped to that call only, with no credential or token leakage across requests.",
+    "type": "auto",
+    "tests": ["tests/test_isolation.py::test_concurrent_requests_do_not_cross_contaminate_credentials (planned, new test, asserts ContextVar is request-scoped under concurrent asyncio tasks)"]
+  },
+  {
+    "id": "TC15",
+    "ac": "AC1",
+    "text": "Given a real Azure subscription and a real app registration with Reader access, When azure_list_subscriptions, azure_list_advisor_recommendations, azure_list_resource_health_events, and azure_get_resource_metrics are called against it, Then the responses match the field shapes assumed in this design's ARM endpoint table (no silent shape mismatch against the mocks used in TC1-TC13).",
+    "type": "manual",
+    "steps": [
+      "Obtain a real Azure AD app registration (tenant id, client id, client secret) with the Reader role on at least one test subscription (needs a real vendor account -- not available in this environment, per mcp-track.md 2.5/3 this does not block design or dev)",
+      "Call azure_list_subscriptions and azure_get_subscription for that subscription",
+      "Call azure_list_advisor_recommendations and azure_list_resource_health_events for that subscription",
+      "Pick a resource from azure_list_resources, call azure_list_resource_metric_definitions, then azure_get_resource_metrics for one of its metrics over a short timespan"
+    ],
+    "expect": "Every call returns 2xx with the fields this design's Data & API contract table assumed (subscriptionId/displayName/state/tenantId, Advisor recommendation category/impact fields, Resource Health event type/status fields, metric timeseries data points) -- no field renamed or missing relative to the mocks.",
+    "result": "untested",
+    "evidence": "needs a real vendor account; not executed in this environment. Tracked in the design doc's Test strategy as the one assumption (ARM response shapes match Microsoft's current REST reference) not independently verified against a live tenant."
+  }
+]
