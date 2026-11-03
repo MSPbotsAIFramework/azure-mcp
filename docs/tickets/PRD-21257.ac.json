@@ -1,0 +1,152 @@
+[
+  {
+    "id": "TC1",
+    "ac": "AC1",
+    "text": "Given valid X-Azure-Tenant-Id/X-Azure-Client-Id/X-Azure-Client-Secret headers for an app registration with Reader access on at least one subscription, When azure_list_subscriptions is called, Then the response lists each visible subscription's id, display name, and state.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_list_subscriptions_returns_id_name_state"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_tools.py::test_list_subscriptions_returns_id_name_state -q -> 1 passed. Asserts items == [{id, subscriptionId, displayName, state, tenantId}] against a mocked ARM /subscriptions response (respx)."
+  },
+  {
+    "id": "TC2",
+    "ac": "AC2",
+    "text": "Given a known subscription_id, When azure_get_subscription is called, Then the response returns that subscription's id, display name, state, and tenant id.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_get_subscription_returns_details"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_tools.py::test_get_subscription_returns_details -q -> 1 passed. Asserts subscriptionId/displayName/state/tenantId against a mocked ARM /subscriptions/{id} response."
+  },
+  {
+    "id": "TC3",
+    "ac": "AC2",
+    "text": "Given an unknown or inaccessible subscription_id, When azure_get_subscription is called, Then the response is a structured not_found error naming the subscription id, not a 500 or unhandled exception.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_get_subscription_unknown_is_not_found"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_tools.py::test_get_subscription_unknown_is_not_found -q -> 1 passed. Mocked ARM 404 maps to error.code == 'not_found' with 'unknown-sub' in error.message, retryable == False."
+  },
+  {
+    "id": "TC4",
+    "ac": "AC3",
+    "text": "Given a valid subscription_id and no filters, When azure_list_resources is called, Then resources in that subscription are returned with a default page size of 50 and has_more set when the result is truncated.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_list_resources_default_pagination"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_tools.py::test_list_resources_default_pagination -q -> 1 passed. Asserts request sent $top=50 and has_more is True when ARM response includes a nextLink."
+  },
+  {
+    "id": "TC5",
+    "ac": "AC3",
+    "text": "Given resource_group and/or resource_type filters, When azure_list_resources is called, Then only matching resources are returned.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_list_resources_applies_filters"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_tools.py::test_list_resources_applies_filters -q -> 1 passed. Asserts the $filter sent to ARM is \"resourceGroup eq 'rg1' and resourceType eq 'Microsoft.Compute/virtualMachines'\"."
+  },
+  {
+    "id": "TC6",
+    "ac": "AC4",
+    "text": "Given a valid subscription_id, When azure_list_advisor_recommendations is called with an optional category filter (Cost/Security/HighAvailability/Performance/OperationalExcellence), Then only recommendations in that category are returned; with no filter, all categories are returned.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_advisor_recommendations_category_filter"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_tools.py::test_advisor_recommendations_category_filter -q -> 1 passed. Asserts $filter == \"Category eq 'Cost'\" and the projected recommendation has category/problem/solution fields."
+  },
+  {
+    "id": "TC7",
+    "ac": "AC5",
+    "text": "Given a valid subscription_id, When azure_list_resource_health_events is called, Then current/recent Service Health events (service issues, planned maintenance, health/security advisories) for that subscription are returned.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_resource_health_events_list"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_tools.py::test_resource_health_events_list -q -> 1 passed against a mocked Microsoft.ResourceHealth/events response."
+  },
+  {
+    "id": "TC8",
+    "ac": "AC6",
+    "text": "Given a valid ARM resource_id, When azure_list_resource_metric_definitions is called, Then the available metric names and units for that resource are returned.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_metric_definitions_list", "tests/test_tools.py::test_metric_definitions_rejects_non_arm_resource_id"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_tools.py::test_metric_definitions_list tests/test_tools.py::test_metric_definitions_rejects_non_arm_resource_id -q -> 2 passed. Second test additionally covers a malformed resource_id rejected locally as invalid_argument before any Azure call."
+  },
+  {
+    "id": "TC9",
+    "ac": "AC7",
+    "text": "Given a valid ARM resource_id, a metric name taken from TC8's output, and a timespan, When azure_get_resource_metrics is called, Then the time-series values for that metric over that timespan are returned.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_get_resource_metrics_returns_series"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_tools.py::test_get_resource_metrics_returns_series -q -> 1 passed. Asserts the two returned {timestamp, average} data points against a mocked Microsoft.Insights/metrics response."
+  },
+  {
+    "id": "TC10",
+    "ac": "AC7",
+    "text": "Given an invalid or unknown metric name, When azure_get_resource_metrics is called, Then the response is a structured invalid_argument error naming the bad metric, not a 500.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_get_resource_metrics_invalid_metric_name"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_tools.py::test_get_resource_metrics_invalid_metric_name -q -> 1 passed. Mocked ARM 400 BadRequest ('Metric BogusMetric is not supported') maps to error.code == 'invalid_argument' with 'BogusMetric' in error.message (wrapped in azure_mcp/tools/monitor.py to guarantee the name is named, not just relying on Azure's own wording)."
+  },
+  {
+    "id": "TC11",
+    "ac": "AC8",
+    "text": "Given a tool call missing one or more of X-Azure-Tenant-Id/X-Azure-Client-Id/X-Azure-Client-Secret, When any tool is called, Then the server returns HTTP 401 listing the missing header name(s), without making any call to Azure.",
+    "type": "auto",
+    "tests": [
+      "tests/test_middleware.py::test_missing_all_headers_returns_401_listing_all_three",
+      "tests/test_middleware.py::test_missing_one_header_names_only_that_one"
+    ],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_middleware.py -q -> 5 passed. Also verified live: `curl -s -o /dev/null -w \"%{http_code}\" -X POST http://localhost:8080/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{...tools/list...}'` against a locally-running `python -m azure_mcp` returned 401, with zero outbound calls logged to login.microsoftonline.com in the server's stderr log."
+  },
+  {
+    "id": "TC12",
+    "ac": "AC9",
+    "text": "Given credentials Azure AD rejects (bad client secret, unknown tenant) or that lack the RBAC Reader role on the target subscription, When any tool is called, Then the tool returns a structured unauthorized error rather than a 500 or an unhandled exception.",
+    "type": "auto",
+    "tests": [
+      "tests/test_tools.py::test_bad_credentials_token_exchange_is_unauthorized",
+      "tests/test_tools.py::test_arm_403_missing_rbac_is_unauthorized"
+    ],
+    "result": "pass",
+    "evidence": "uv run pytest -q -> both pass (mocked AADSTS token-exchange rejection and mocked ARM 403). Also verified live against the real Azure AD endpoint: a tools/call for azure_list_subscriptions with a placeholder tenant/client GUID returned HTTP 200 with a JSON-RPC result body `{\"error\":{\"code\":\"unauthorized\",\"message\":\"Azure AD rejected the tenant/client credentials (400). AADSTS700038: ... is not a valid application identifier. ...\",\"retryable\":false}}` and isError:false -- never a 500 or unhandled exception, confirmed via the server's stderr log showing the real outbound POST to login.microsoftonline.com returning 400."
+  },
+  {
+    "id": "TC13",
+    "ac": "AC10",
+    "text": "Given Azure returns 429 on an upstream call, When the tool retries, Then it backs off respecting Retry-After up to the single-call time budget (<120s), and if still failing returns a structured rate_limited error.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_429_retries_then_succeeds", "tests/test_tools.py::test_429_exhausted_is_rate_limited"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_tools.py::test_429_retries_then_succeeds tests/test_tools.py::test_429_exhausted_is_rate_limited -q -> 2 passed. First: 429-then-200 sequence succeeds after one retry (Retry-After: 0 honored). Second: 429 exhausted after max_retries+1 calls (route.call_count == settings.max_retries + 1) ends in error.code == 'rate_limited', retryable == True."
+  },
+  {
+    "id": "TC14",
+    "ac": "AC11",
+    "text": "Given two concurrent tool calls carrying different Tenant Id/Client Id/Client Secret headers, When both execute at the same time, Then each call's Azure AD token exchange and response data are scoped to that call only, with no credential or token leakage across requests.",
+    "type": "auto",
+    "tests": [
+      "tests/test_isolation.py::test_concurrent_requests_do_not_cross_contaminate_credentials",
+      "tests/test_isolation.py::test_contextvar_is_request_scoped_under_concurrent_tasks"
+    ],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_isolation.py -q -> 2 passed. First test runs two tenants' requests concurrently through CredentialMiddleware with an asyncio.sleep yield point mid-handler and asserts each tenant's own client_id/client_secret reached its own token exchange and current() still reflects that request's own credentials after the await (no cross-tenant read). Second test directly proves Python's per-task ContextVar copy semantics under asyncio.gather. Also exercised in test_tools.py::test_token_is_fetched_fresh_per_call (token never cached/reused across calls, which is the mechanism that makes per-request isolation possible)."
+  },
+  {
+    "id": "TC15",
+    "ac": "AC1/AC4/AC5/AC7",
+    "text": "Given a real Azure subscription and a real app registration with Reader access, When azure_list_subscriptions, azure_list_advisor_recommendations, azure_list_resource_health_events, and azure_get_resource_metrics are called against it, Then the responses match the field shapes assumed in this design's ARM endpoint table (no silent shape mismatch against the mocks used in TC1-TC13).",
+    "type": "manual",
+    "steps": [
+      "Obtain a real Azure AD app registration (tenant id, client id, client secret) with the Reader role on at least one test subscription (needs a real vendor account -- not available in this environment, per mcp-track.md 2.5/3 this does not block design or dev)",
+      "Call azure_list_subscriptions and azure_get_subscription for that subscription",
+      "Call azure_list_advisor_recommendations and azure_list_resource_health_events for that subscription",
+      "Pick a resource from azure_list_resources, call azure_list_resource_metric_definitions, then azure_get_resource_metrics for one of its metrics over a short timespan"
+    ],
+    "expect": "Every call returns 2xx with the fields this design's Data & API contract table assumed (subscriptionId/displayName/state/tenantId, Advisor recommendation category/impact fields, Resource Health event type/status fields, metric timeseries data points) -- no field renamed or missing relative to the mocks.",
+    "result": "untested",
+    "evidence": "Needs a real vendor account; not executed in this environment (no Azure subscription/app registration credentials available to DEV01). What WAS verified live in this environment: the token-exchange call path itself reaches the real https://login.microsoftonline.com endpoint and correctly maps a real AADSTS error response into the unauthorized envelope (see TC12 evidence) -- confirming outbound connectivity and the error-mapping path work against the real service, just not the ARM response-shape assumptions this test case targets."
+  }
+]
