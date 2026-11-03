@@ -43,7 +43,7 @@ def register(mcp: FastMCP, settings: Settings) -> None:
             items = [_project(s) for s in rows]
             return {"items": items, "count": len(items), "has_more": bool(data.get("nextLink"))}
 
-        return await run(settings, handler)
+        return await run("azure_list_subscriptions", settings, handler)
 
     @mcp.tool(annotations=READ)
     async def azure_get_subscription(subscription_id: str) -> str:
@@ -70,4 +70,6 @@ def register(mcp: FastMCP, settings: Settings) -> None:
                 raise
             return _project(data)
 
-        return await run(settings, handler)
+        return await run(
+            "azure_get_subscription", settings, handler, subscription_id=subscription_id
+        )

@@ -72,7 +72,7 @@ def register(mcp: FastMCP, settings: Settings) -> None:
             items = [_project_definition(d) for d in rows]
             return {"items": items, "count": len(items)}
 
-        return await run(settings, handler)
+        return await run("azure_list_resource_metric_definitions", settings, handler)
 
     @mcp.tool(annotations=READ)
     async def azure_get_resource_metrics(
@@ -135,4 +135,4 @@ def register(mcp: FastMCP, settings: Settings) -> None:
             items = [_project_metric(m) for m in rows]
             return {"items": items, "count": len(items)}
 
-        return await run(settings, handler)
+        return await run("azure_get_resource_metrics", settings, handler)

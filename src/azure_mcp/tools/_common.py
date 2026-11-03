@@ -38,24 +38,60 @@ def cap(limit: int | None, default: int = DEFAULT_LIMIT, maximum: int = MAX_LIMI
 Handler = Callable[[AzureClient], Awaitable[Any]]
 
 
-async def run(settings: Settings, handler: Handler) -> str:
+async def run(
+    tool_name: str,
+    settings: Settings,
+    handler: Handler,
+    *,
+    subscription_id: str | None = None,
+) -> str:
     """Execute ``handler`` with an AzureClient bound to this request's
     credentials. Always returns a string: the JSON result, or an error
     envelope -- tools never raise (SOP section 4.1).
+
+    Logs exactly one line per call -- ``tool_name``, ``tenant_id`` and
+    ``outcome`` (``ok`` or the structured error ``code``), plus
+    ``subscription_id`` when the tool is scoped to one -- for traceability,
+    per the design doc's Security section. Never logs the client secret.
     """
     creds = current()
     if creds is None:
         return error_envelope("not_configured", NO_CREDENTIALS)
+    tenant_id = creds.tenant_id
     try:
         async with AzureClient(creds, settings) as client:
             result = await handler(client)
     except AzureApiError as exc:
+        log.info(
+            "tool=%s tenant_id=%s subscription_id=%s outcome=%s",
+            tool_name,
+            tenant_id,
+            subscription_id,
+            exc.code,
+        )
         return exc.to_envelope()
     except ToolInputError as exc:
+        log.info(
+            "tool=%s tenant_id=%s subscription_id=%s outcome=invalid_argument",
+            tool_name,
+            tenant_id,
+            subscription_id,
+        )
         return error_envelope("invalid_argument", str(exc))
     except Exception:  # noqa: BLE001 - tools must never raise
-        log.exception("unexpected error in tool handler")
+        log.exception(
+            "tool=%s tenant_id=%s subscription_id=%s outcome=upstream_error",
+            tool_name,
+            tenant_id,
+            subscription_id,
+        )
         return error_envelope("upstream_error", "Unexpected error while calling Azure.", True)
+    log.info(
+        "tool=%s tenant_id=%s subscription_id=%s outcome=ok",
+        tool_name,
+        tenant_id,
+        subscription_id,
+    )
     return result if isinstance(result, str) else dump_json_capped(result)
 
 

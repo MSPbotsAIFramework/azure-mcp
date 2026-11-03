@@ -54,4 +54,9 @@ def register(mcp: FastMCP, settings: Settings) -> None:
             items = [_project(e) for e in rows]
             return page(items, size, data.get("nextLink") if isinstance(data, dict) else None)
 
-        return await run(settings, handler)
+        return await run(
+            "azure_list_resource_health_events",
+            settings,
+            handler,
+            subscription_id=subscription_id,
+        )
