@@ -1,5 +1,7 @@
 # PRD-21257 · Code review
 
+Status: frozen @ cd17960330e8b24c98f91ad60a5ed9981510ddcc
+
 ## Round 1 · 2026-11-02 · reviewed dev/PRD-21257 @ 2bc3a1f (base 6791c0c)
 
 Verdict: changes requested
@@ -112,3 +114,48 @@ Verdict: changes requested
      the 5 tool modules that call `run()`), `README.md` untouched, so the
      round-1 "Verified this round" README/Chinese-text findings still hold
      without re-checking.
+
+## Round 2 · 2026-11-03 · reviewed dev/PRD-21257 @ cd17960 (base 6791c0c)
+
+Verdict: approved
+
+### Findings
+
+None. Checked the single round-1 must-fix against the fix commit (56e45bf) and the
+docs-only commit that records it (cd17960); no new must-fix found in either.
+
+### Round 1 must-fix check
+
+1. `src/azure_mcp/tools/_common.py:41-59` (`run()`) — **resolved**. `run()` now takes
+   `tool_name` and an optional `subscription_id`, and logs one `log.info`/`log.exception`
+   line per outcome branch: success (`outcome=ok`), `AzureApiError` (`outcome=<exc.code>`),
+   `ToolInputError` (`outcome=invalid_argument`), and the pre-existing catch-all
+   (`outcome=upstream_error`). All 7 call sites (`subscriptions.py` x2, `resources.py`,
+   `advisor.py`, `resource_health.py`, `monitor.py` x2) were updated to pass their tool
+   name; the 6 that carry a `subscription_id` argument pass it through, matching the
+   design doc's full "`tenant_id` + `subscription_id` + tool name + outcome" commitment,
+   not just the minimum the must-fix asked for. Never logs `tenant_secret`/client secret —
+   confirmed by reading `_common.py` end to end, not just the diff. The one branch that
+   does not log (`creds is None` / `not_configured`) is pre-auth: there is no `tenant_id`
+   to attribute the call to yet, and the design doc's traceability requirement is about
+   attributing calls to a tenant, so this is not a gap.
+
+### Verified this round (independently re-run, not taken from the dev leg's claim)
+
+- `uv run pytest -q` → 30 passed (same count as round 1 and as the dev leg's claim;
+  re-run on `cd17960`, not copied from the `[DEV]` stub).
+- `uvx ruff check .` → all checks passed.
+- `grep -rnP '[\x{4e00}-\x{9fff}]' --exclude-dir=.git --exclude-dir=.venv .` → no output.
+- `git diff 56e45bf...cd17960 --stat` → only `docs/tickets/PRD-21257-review.md` changed
+  (42 insertions, the round-1 Fixes section); no code changed since the commit the dev
+  leg's own evidence was gathered against, so round 1's "Verified this round" findings
+  (README connector section, Docker build, `/health`/`tools/list`/401 smoke, credential
+  isolation, Data & API contract spot-check) still hold without re-checking.
+
+### Suggestions carried over from round 1 (not re-raised, still just suggestions)
+
+1. `src/azure_mcp/client.py:35-42` — `Retry-After` cap at 20s vs. AC10's "<120s" wording.
+2. `advisor.py:54-64` / `resource_health.py:48-57` — no `$top` passed to ARM, client-side
+   slice only.
+
+Neither touched by the round-1 fix; still non-blocking per the same reasoning as round 1.
