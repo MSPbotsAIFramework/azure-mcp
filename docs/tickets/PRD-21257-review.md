@@ -70,3 +70,45 @@ Verdict: changes requested
 - Credentials: read only from the three required headers in `auth.py`, bound to a
   `contextvars.ContextVar`, reset in `finally`; never cached, never logged, no
   environment-variable fallback — matches SOP §3's isolation requirement.
+
+### Fixes (round 1), commit 56e45bf
+
+1. `src/azure_mcp/tools/_common.py` `run()` — changed signature to
+   `run(tool_name, settings, handler, *, subscription_id=None)` and added one
+   `log.info`/`log.exception` call per outcome: success (`outcome=ok`),
+   `AzureApiError` (`outcome=<exc.code>`), `ToolInputError`
+   (`outcome=invalid_argument`), and the existing catch-all
+   (`outcome=upstream_error`, now also carrying `tool`/`tenant_id`). Every
+   call site in `subscriptions.py`, `resources.py`, `advisor.py`,
+   `resource_health.py` and `monitor.py` (7 tools) updated to pass its tool
+   name; the 6 tools that take `subscription_id` also pass it through so the
+   log line matches the design doc's full "`tenant_id` + `subscription_id` +
+   tool name + outcome" commitment, not just the must-fix's minimum ask.
+   `azure_list_subscriptions` (no subscription scope) and the two
+   `monitor.py` tools (scoped by `resource_id`, not `subscription_id`) log
+   `subscription_id=None` — there is no subscription argument available at
+   that call site to pass.
+   - Re-ran `uv run pytest -q` on the fix: 30 passed (no new test added —
+     no test harness in this repo currently asserts on `caplog`; verified
+     by reading log output directly instead, next bullet).
+   - Verified live against the real container (`python -m azure_mcp`,
+     `GET /health` -> 200; `tools/list` -> 7 tools) and the real Azure AD
+     endpoint: `tools/call azure_list_subscriptions` with placeholder
+     tenant/client credentials produced server stderr line
+     `INFO azure_mcp tool=azure_list_subscriptions
+     tenant_id=00000000-0000-0000-0000-000000000001 subscription_id=None
+     outcome=unauthorized` and the response body's `AADSTS90002` error was
+     unaffected (same shape as the design doc's error mapping). Grepped the
+     full server log for the placeholder client secret value: 0 matches.
+   - Also exercised the success, `AzureApiError`, `ToolInputError` and
+     unhandled-exception branches directly via a scratch script
+     (`~/.claude/skills/mb-ticket-pipeline/scratch/PRD-21257/verify_logging.py`,
+     not committed to the repo) with fake credentials bound to the same
+     `ContextVar` the middleware uses: all four logged the expected
+     `tool=... tenant_id=... subscription_id=... outcome=...` line, never
+     the secret.
+   - `uvx ruff check .` -> all checks passed.
+   - `git diff --stat cabc7e0..56e45bf`: 6 files changed (`_common.py` +
+     the 5 tool modules that call `run()`), `README.md` untouched, so the
+     round-1 "Verified this round" README/Chinese-text findings still hold
+     without re-checking.
